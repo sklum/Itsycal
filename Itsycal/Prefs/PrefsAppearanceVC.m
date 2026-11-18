@@ -110,8 +110,10 @@
         image.accessibilityDescription = iconNames[i];
         [iconImages addObject:image];
     }
+    [iconImages addObject:[NSImage imageWithSystemSymbolName:@"textformat" accessibilityDescription:NSLocalizedString(@"Plain text date", @"Accessibility description for menu bar icon showing the date as plain text like the system clock")]];
     NSSegmentedControl *iconPicker = [NSSegmentedControl segmentedControlWithImages:iconImages trackingMode:NSSegmentSwitchTrackingSelectOne target:nil action:nil];
     [iconPicker.cell setAccessibilityLabel:NSLocalizedString(@"Menu bar icon", @"Accessibility label for menu bar icon picker")];
+    iconPicker.segmentDistribution = NSSegmentDistributionFillEqually;
     [iconPicker setSelectedSegment:0]; // will be set by binding below.
     [v addSubview:iconPicker];
 

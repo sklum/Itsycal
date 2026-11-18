@@ -29,10 +29,11 @@
         [NSException raise:NSInternalInconsistencyException format:@"IconIsConfigurableTransformer: value (%@) does not respond to -integerValue.", [value class]];
     }
  
-    // kMenuBarIconType is 0, 1, 2 or 3.
-    // Both type 0 (solid round rect) and type 1 (outlined round rect) can be
-    // configured to show month and day of week. Types 2 and 3 cannot.
-    return [NSNumber numberWithBool: index <= 1];
+    // kMenuBarIconType is 0, 1, 2, 3 or 4.
+    // Type 0 (solid round rect), type 1 (outlined round rect) and type 4
+    // (plain text) can be configured to show month and day of week.
+    // Types 2 and 3 cannot.
+    return [NSNumber numberWithBool: index <= 1 || index == 4];
 }
 
 @end

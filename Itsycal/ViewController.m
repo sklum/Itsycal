@@ -551,6 +551,7 @@ static NSArray<NSString *> *ObservedDefaultsKeys(void)
     _statusItem.button.action = @selector(statusItemClicked:);
     [_statusItem.button sendActionOn:NSEventMaskLeftMouseDown];
     [(NSButtonCell *)_statusItem.button.cell setHighlightsBy:NSNoCellMask];
+    _statusItem.button.font = [NSFont menuBarFontOfSize:0];
 
     // Remember item position in menubar. (@pskowronek (Github))
     [_statusItem setAutosaveName:@"ItsycalStatusItem"];
@@ -692,24 +693,45 @@ static NSArray<NSString *> *ObservedDefaultsKeys(void)
     return iconText;
 }
 
+- (BOOL)usesPlainTextIcon
+{
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    return ![defaults boolForKey:kHideIcon] && [defaults integerForKey:kMenuBarIconType] == 4;
+}
+
+- (NSImage *)meetingIndicatorImage
+{
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    if (!([defaults boolForKey:kShowMeetingIndicator] && _shouldShowMeetingIndicator)) {
+        return nil;
+    }
+    NSImage *meetIndicator = [NSImage imageNamed:@"meetSolid"];
+    meetIndicator.template = YES;
+    return meetIndicator;
+}
+
 - (void)updateMenubarIcon
 {
     NSString *accessibilityTitle = @"Itsycal";
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     BOOL hideIcon = [defaults boolForKey:kHideIcon];
-    if (hideIcon) {
-        if ([defaults boolForKey:kShowMeetingIndicator] && _shouldShowMeetingIndicator) {
-            NSImage *meetIndicator = [NSImage imageNamed:@"meetSolid"];
-            meetIndicator.template = YES;
-            _statusItem.button.image = meetIndicator;
-            _statusItem.button.imagePosition = NSImageLeft;
-        }
-        else {
-            _statusItem.button.image = nil;
-            _statusItem.button.imagePosition = NSNoImage;
-        }
+    BOOL plainText = [self usesPlainTextIcon];
+    NSMutableArray<NSString *> *titleParts = [NSMutableArray new];
+
+    if (hideIcon || plainText) {
+        NSImage *meetIndicator = [self meetingIndicatorImage];
+        _statusItem.button.image = meetIndicator;
+        _statusItem.button.imagePosition = meetIndicator ? NSImageLeft : NSNoImage;
     }
-    else {
+    if (plainText) {
+        // Plain text in the standard menu bar font, the same way the
+        // system clock draws itself. The status bar button supplies the
+        // text color for light, dark and tinted menu bars.
+        NSString *iconText = [self iconText];
+        accessibilityTitle = [accessibilityTitle stringByAppendingFormat:@", %@", iconText];
+        [titleParts addObject:iconText];
+    }
+    else if (!hideIcon) {
         NSString *iconText = [self iconText];
         accessibilityTitle = [accessibilityTitle stringByAppendingFormat:@", %@", iconText];
         _statusItem.button.image = [self iconImageForText:iconText];
@@ -717,23 +739,27 @@ static NSArray<NSString *> *ObservedDefaultsKeys(void)
     }
     if (_clockFormat) {
         [_iconDateFormatter setDateFormat:_clockFormat];
-        // After updating the Xcode Deployment Target to macOS 10.14 from
-        // macOS 10.12, the button title renders slightly higher than it should
-        // on Mojave and slightly lower than it should on Catalina.
-        // As a workaround, instead of setting the title with an NSString,
-        // provide an NSAttributedString with a baseline offset.
-        CGFloat baselineOffset = [defaults floatForKey:kBaselineOffset];
-        baselineOffset = MIN(2.0, MAX(-2.0, baselineOffset));
-        NSString *buttonText = [_iconDateFormatter stringFromDate:[NSDate new]];
-        accessibilityTitle = [accessibilityTitle stringByAppendingFormat:@", %@", buttonText];
-        if (!hideIcon) {
-            // Prepend a space to _clockFormat text to separate it from icon.
-            buttonText = [@" " stringByAppendingString:buttonText];
-        }
-        _statusItem.button.attributedTitle = [
-            [NSAttributedString alloc] initWithString:buttonText attributes:@{
-            NSBaselineOffsetAttributeName: @(baselineOffset)}];
+        NSString *clockText = [_iconDateFormatter stringFromDate:[NSDate new]];
+        accessibilityTitle = [accessibilityTitle stringByAppendingFormat:@", %@", clockText];
+        [titleParts addObject:clockText];
     }
+
+    NSString *buttonText = [titleParts componentsJoinedByString:@" "];
+    BOOL hasLeadingImage = _statusItem.button.image != nil && _statusItem.button.imagePosition == NSImageLeft;
+    if (buttonText.length > 0 && hasLeadingImage) {
+        // Prepend a space to separate the text from the image.
+        buttonText = [@" " stringByAppendingString:buttonText];
+    }
+    // After updating the Xcode Deployment Target to macOS 10.14 from
+    // macOS 10.12, the button title renders slightly higher than it should
+    // on Mojave and slightly lower than it should on Catalina.
+    // As a workaround, instead of setting the title with an NSString,
+    // provide an NSAttributedString with a baseline offset.
+    CGFloat baselineOffset = [defaults floatForKey:kBaselineOffset];
+    baselineOffset = MIN(2.0, MAX(-2.0, baselineOffset));
+    _statusItem.button.attributedTitle = [[NSAttributedString alloc] initWithString:buttonText attributes:@{
+        NSFontAttributeName: _statusItem.button.font,
+        NSBaselineOffsetAttributeName: @(baselineOffset)}];
     _statusItem.button.accessibilityTitle = accessibilityTitle;
     [self adjustStatusItemWidthIfNecessary];
 }
@@ -751,22 +777,8 @@ static NSArray<NSString *> *ObservedDefaultsKeys(void)
             dummyButton = [NSStatusBarButton new];
             dummyButton.font = [NSFont fontWithDescriptor:monoFontDesc size:0];
         }
-        // Same logic as -updateMenubarIcon to set up dummyButton
-        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-        if ([defaults boolForKey:kHideIcon]) {
-            if ([defaults boolForKey:kShowMeetingIndicator] && _shouldShowMeetingIndicator) {
-                dummyButton.image = [NSImage imageNamed:@"meetSolid"];
-                dummyButton.imagePosition = NSImageLeft;
-            }
-            else {
-                dummyButton.image = nil;
-                dummyButton.imagePosition = NSNoImage;
-            }
-        }
-        else {
-            dummyButton.image = _statusItem.button.image;
-            dummyButton.imagePosition = _clockFormat ? NSImageLeft : NSImageOnly;
-        }
+        dummyButton.image = _statusItem.button.image;
+        dummyButton.imagePosition = _statusItem.button.imagePosition;
         dummyButton.title = _statusItem.button.title;
         [dummyButton sizeToFit];
         _statusItem.length = NSWidth(dummyButton.frame) - 8;
